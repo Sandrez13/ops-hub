@@ -41,7 +41,85 @@ const db = {
   }
 };
 
-export default function OPSHub() {
+// ─── Auth Wrapper ───
+function LoginPage() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const signIn = async () => {
+    setLoading(true);
+    setError(null);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin }
+    });
+    if (error) { setError(error.message); setLoading(false); }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-violet-500/30">
+            <Sparkles className="text-white" size={36} />
+          </div>
+          <h1 className="text-4xl font-bold text-white mb-2">OPS Hub</h1>
+          <p className="text-gray-400">Alchemy Bucharest • Office Operations</p>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8">
+          <h2 className="text-xl font-semibold text-white text-center mb-2">Welcome</h2>
+          <p className="text-gray-400 text-center text-sm mb-8">Sign in with your Alchemy account to continue</p>
+          {error && (
+            <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 mb-4 flex items-center gap-2">
+              <AlertCircle size={16} className="text-red-400" />
+              <p className="text-sm text-red-400">{error}</p>
+            </div>
+          )}
+          <button
+            onClick={signIn}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-white hover:bg-gray-50 text-gray-800 rounded-2xl font-semibold transition-all hover:scale-[1.02] shadow-lg disabled:opacity-50"
+          >
+            {loading ? (
+              <Loader2 size={22} className="animate-spin" />
+            ) : (
+              <svg width="22" height="22" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            )}
+            {loading ? 'Signing in...' : 'Sign in with Google'}
+          </button>
+        </div>
+        <p className="text-center text-gray-600 text-xs mt-6">Protected workspace • Authorized personnel only</p>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <Loader2 size={48} className="animate-spin text-violet-500" />
+      </div>
+    );
+  }
+
+  if (!session) return <LoginPage />;
+  return <OPSHub session={session} />;
+}function OPSHub({ session }) {
   const [tab, setTab] = useState('dashboard');
   const [events, setEvents] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -724,7 +802,234 @@ const [teamMembers, setTeamMembers] = useState([
     { id: 1, name: 'Bogdan Seretean', email: 'bogdan.seretean@alchemy.com', role: 'Admin', initials: 'BS' }
   ]);
   const [editingTeam, setEditingTeam] = useState(null);
-  const [showTeamModal, setShowTeamModal] = useState(false);
+  const [showTeamModal, setShowTeamModal] = useState(false);// Profile state
+  const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!session?.user?.id) return;
+      try {
+        const { data, error } = await supabase.from('ops_profiles').select('*').eq('id', session.user.id).single();
+        if (error && error.code === 'PGRST116') {
+          // Profile doesn't exist yet, create it
+          const { data: newProfile } = await supabase.from('ops_profiles').insert({
+            id: session.user.id,
+            name: session.user.user_metadata?.full_name || session.user.email,
+            email: session.user.email,
+            avatar_url: session.user.user_metadata?.avatar_url || '',
+            role: 'Admin'
+          }).select().single();
+          setProfile(newProfile);
+        } else if (data) {
+          setProfile(data);
+        }
+      } catch (err) { console.error('Profile load error:', err); }
+      setProfileLoading(false);
+    };
+    loadProfile();
+  }, [session]);
+
+  const updateProfile = async (updates) => {
+    if (!profile) return;
+    try {
+      const { data, error } = await supabase.from('ops_profiles').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', profile.id).select().single();
+      if (!error && data) setProfile(data);
+    } catch (err) { console.error('Profile update error:', err); }
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const avatarOptions = [
+    { id: 'purple-star', emoji: '⭐', bg: 'from-violet-500 to-purple-600' },
+    { id: 'blue-rocket', emoji: '🚀', bg: 'from-blue-500 to-cyan-600' },
+    { id: 'pink-heart', emoji: '💖', bg: 'from-pink-500 to-rose-600' },
+    { id: 'green-leaf', emoji: '🌿', bg: 'from-emerald-500 to-teal-600' },
+    { id: 'orange-fire', emoji: '🔥', bg: 'from-amber-500 to-orange-600' },
+    { id: 'red-gem', emoji: '💎', bg: 'from-red-500 to-pink-600' },
+    { id: 'teal-wave', emoji: '🌊', bg: 'from-teal-500 to-cyan-600' },
+    { id: 'yellow-sun', emoji: '☀️', bg: 'from-yellow-400 to-amber-500' },
+    { id: 'indigo-moon', emoji: '🌙', bg: 'from-indigo-500 to-violet-600' },
+    { id: 'lime-bolt', emoji: '⚡', bg: 'from-lime-500 to-green-600' },
+    { id: 'rose-music', emoji: '🎵', bg: 'from-rose-500 to-fuchsia-600' },
+    { id: 'sky-cloud', emoji: '☁️', bg: 'from-sky-400 to-blue-500' },
+  ];
+
+  const getAvatarById = (id) => avatarOptions.find(a => a.id === id);
+
+  const AvatarDisplay = ({ avatarId, name, size = 'md' }) => {
+    const avatar = getAvatarById(avatarId);
+    const sizes = { sm: 'w-7 h-7 text-sm', md: 'w-12 h-12 text-xl', lg: 'w-16 h-16 text-3xl' };
+    if (avatar) {
+      return (
+        <div className={`${sizes[size]} rounded-2xl bg-gradient-to-br ${avatar.bg} flex items-center justify-center shadow-lg animate-pulse-slow`}>
+          <span className={size === 'sm' ? 'text-xs' : size === 'lg' ? 'text-2xl' : 'text-lg'}>{avatar.emoji}</span>
+        </div>
+      );
+    }
+    return (
+      <div className={`${sizes[size]} rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg`}>
+        {name?.charAt(0) || '?'}
+      </div>
+    );
+  };const Profile = () => {
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const [prefs, setPrefs] = useState({
+      notify_changes: profile?.notify_changes || false,
+      notify_birthdays: profile?.notify_birthdays || false,
+      notify_birthdays_days: profile?.notify_birthdays_days || 3,
+      notify_low_stock: profile?.notify_low_stock || false,
+      notify_budget: profile?.notify_budget || false,
+      notify_budget_threshold: profile?.notify_budget_threshold || 80,
+    });
+
+    const savePrefs = async () => {
+      setSaving(true);
+      await updateProfile(prefs);
+      setSaving(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    };
+
+    const Toggle = ({ label, desc, checked, onChange }) => (
+      <div className={`flex items-center justify-between p-4 rounded-xl ${c('bg-gray-800/50', 'bg-gray-50')}`}>
+        <div className="flex-1 mr-4">
+          <p className="font-medium">{label}</p>
+          <p className={`text-sm ${c('text-gray-400', 'text-gray-500')}`}>{desc}</p>
+        </div>
+        <button onClick={() => onChange(!checked)} className={`w-12 h-7 rounded-full transition-colors relative ${checked ? 'bg-violet-500' : c('bg-gray-700', 'bg-gray-300')}`}>
+          <div className={`w-5 h-5 bg-white rounded-full absolute top-1 transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+        </button>
+      </div>
+    );
+
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">My Profile</h1>
+
+{/* Profile Card */}
+        <div className={`p-6 rounded-2xl border ${c('border-gray-700/50 bg-gray-800/50', 'border-gray-200 bg-white')}`}>
+          <div className="flex items-center gap-5">
+            <AvatarDisplay avatarId={profile?.avatar_url} name={profile?.name} size="lg" />
+            <div className="flex-1">
+              <p className="text-xl font-bold">{profile?.name}</p>
+              <p className={c('text-gray-400', 'text-gray-500')}>{profile?.email}</p>
+              <span className={`inline-block mt-1 px-3 py-1 rounded-full text-xs font-medium ${
+                profile?.role === 'Admin' ? 'bg-violet-500/20 text-violet-400' :
+                profile?.role === 'Editor' ? 'bg-cyan-500/20 text-cyan-400' :
+                'bg-emerald-500/20 text-emerald-400'
+              }`}>{profile?.role || 'Viewer'}</span>
+            </div>
+            <button onClick={signOut} className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${c('bg-gray-700 hover:bg-gray-600 text-gray-300', 'bg-gray-100 hover:bg-gray-200 text-gray-600')}`}>
+              Sign Out
+            </button>
+          </div>
+        </div>
+
+        {/* Avatar Picker */}
+        <div className={`p-6 rounded-2xl border ${c('border-gray-700/50 bg-gray-800/50', 'border-gray-200 bg-white')}`}>
+          <div className="flex items-center gap-3 mb-4">
+            <Sparkles size={18} className="text-violet-400" />
+            <h3 className="font-semibold">Choose Your Avatar</h3>
+          </div>
+          <div className="grid grid-cols-6 sm:grid-cols-12 gap-3">
+            {avatarOptions.map(a => (
+              <button
+                key={a.id}
+                onClick={() => updateProfile({ avatar_url: a.id })}
+                className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${a.bg} flex items-center justify-center text-lg transition-all hover:scale-110 ${
+                  profile?.avatar_url === a.id ? 'ring-3 ring-white ring-offset-2 ring-offset-gray-900 scale-110' : 'opacity-70 hover:opacity-100'
+                }`}
+              >
+                {a.emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Notification Preferences */}
+        <div className={`p-6 rounded-2xl border ${c('border-gray-700/50 bg-gray-800/50', 'border-gray-200 bg-white')}`}>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600">
+              <Bell size={20} className="text-white" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg">Email Notifications</h3>
+              <p className={`text-sm ${c('text-gray-400', 'text-gray-500')}`}>Choose what you want to be notified about</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Toggle
+              label="All Changes"
+              desc="Get notified when events, expenses, or inventory are added or modified"
+              checked={prefs.notify_changes}
+              onChange={v => setPrefs({ ...prefs, notify_changes: v })}
+            />
+
+            <Toggle
+              label="Upcoming Birthdays"
+              desc="Reminder before team member birthdays"
+              checked={prefs.notify_birthdays}
+              onChange={v => setPrefs({ ...prefs, notify_birthdays: v })}
+            />
+            {prefs.notify_birthdays && (
+              <div className={`ml-4 p-4 rounded-xl border-l-4 border-pink-500 ${c('bg-pink-500/5', 'bg-pink-50')}`}>
+                <label className="text-sm font-medium">Notify me this many days before:</label>
+                <div className="flex items-center gap-3 mt-2">
+                  <input
+                    type="range" min="1" max="14" value={prefs.notify_birthdays_days}
+                    onChange={e => setPrefs({ ...prefs, notify_birthdays_days: parseInt(e.target.value) })}
+                    className="flex-1 accent-pink-500"
+                  />
+                  <span className="text-lg font-bold text-pink-400 w-12 text-center">{prefs.notify_birthdays_days}d</span>
+                </div>
+              </div>
+            )}
+
+            <Toggle
+              label="Low Stock Alerts"
+              desc="Get notified when inventory items fall below minimum"
+              checked={prefs.notify_low_stock}
+              onChange={v => setPrefs({ ...prefs, notify_low_stock: v })}
+            />
+
+            <Toggle
+              label="Budget Warnings"
+              desc="Get notified when monthly spending exceeds threshold"
+              checked={prefs.notify_budget}
+              onChange={v => setPrefs({ ...prefs, notify_budget: v })}
+            />
+            {prefs.notify_budget && (
+              <div className={`ml-4 p-4 rounded-xl border-l-4 border-amber-500 ${c('bg-amber-500/5', 'bg-amber-50')}`}>
+                <label className="text-sm font-medium">Alert when budget reaches:</label>
+                <div className="flex items-center gap-3 mt-2">
+                  <input
+                    type="range" min="50" max="100" step="5" value={prefs.notify_budget_threshold}
+                    onChange={e => setPrefs({ ...prefs, notify_budget_threshold: parseInt(e.target.value) })}
+                    className="flex-1 accent-amber-500"
+                  />
+                  <span className="text-lg font-bold text-amber-400 w-16 text-center">{prefs.notify_budget_threshold}%</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={savePrefs}
+            disabled={saving}
+            className="w-full mt-6 py-3.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg shadow-violet-500/25 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {saving ? <Loader2 size={18} className="animate-spin" /> : saved ? <Check size={18} /> : null}
+            {saving ? 'Saving...' : saved ? 'Saved!' : 'Save Preferences'}
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const TeamMemberModal = () => {
     const [f, sF] = useState(editingTeam || { name: '', email: '', role: 'Viewer', initials: '' });
@@ -839,9 +1144,11 @@ const [teamMembers, setTeamMembers] = useState([
             <Nav icon={Star} label="Vendors" t="vendors"/>
             <Nav icon={Cake} label="Birthdays" t="birthdays"/>
             <Nav icon={FileText} label="Reports" t="reports"/>
-            <Nav icon={UserCog} label="Team" t="team"/>
+            <Nav icon={UserCog} label="Team" t="team"/><Nav icon={Users} label="My Profile" t="profile"/>
           </nav>
-          <button onClick={() => setDark(!dark)} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${c('text-gray-400 hover:bg-white/5', 'text-gray-600 hover:bg-gray-100')}`}>{dark ? <Sun size={20}/> : <Moon size={20}/>}{dark ? 'Light' : 'Dark'} Mode</button>
+          <button onClick={() => setTab('profile')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all mb-1 ${c('text-gray-400 hover:bg-white/5', 'text-gray-600 hover:bg-gray-100')}`}>
+<AvatarDisplay avatarId={profile?.avatar_url} name={profile?.name} size="sm" />  <span className="text-sm truncate">{profile?.name || 'Profile'}</span>
+</button><button onClick={() => setDark(!dark)} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${c('text-gray-400 hover:bg-white/5', 'text-gray-600 hover:bg-gray-100')}`}>{dark ? <Sun size={20}/> : <Moon size={20}/>}{dark ? 'Light' : 'Dark'} Mode</button>
           <div className={`flex items-center gap-2 px-4 py-2 mt-2 rounded-xl text-xs ${syncError ? 'text-red-400' : 'text-emerald-400'}`}>
             {syncError ? <CloudOff size={14}/> : <Cloud size={14}/>}
             {syncError || 'Synced'}
@@ -856,7 +1163,7 @@ const [teamMembers, setTeamMembers] = useState([
           {tab === 'vendors' && <Vendors/>}
           {tab === 'birthdays' && <Birthdays/>}
           {tab === 'reports' && <Reports/>}
-          {tab === 'team' && <Team/>}
+          {tab === 'team' && <Team/>}{tab === 'profile' && <Profile/>}
         </div>
       </div>
       )}
