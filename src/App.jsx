@@ -720,15 +720,102 @@ export default function OPSHub() {
     </div>
   );
 
-  const Team = () => (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">Team</h1>
-      <div className={`p-6 rounded-2xl border ${c('border-gray-700/50 bg-gray-800/50', 'border-gray-200 bg-white')}`}>
-        <h3 className="font-semibold mb-4">Team Members</h3>
-        <div className={`flex items-center justify-between p-4 rounded-xl ${c('bg-gray-900/50', 'bg-gray-50')}`}><div className="flex items-center gap-4"><div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-violet-500/30">B</div><div><p className="font-semibold">Bogdan (You)</p><p className={`text-sm ${c('text-gray-400', 'text-gray-500')}`}>bogdan@alchemy.ro</p></div></div><span className="px-4 py-1.5 bg-violet-500/20 text-violet-400 rounded-full text-sm font-medium">Admin</span></div>
+const [teamMembers, setTeamMembers] = useState([
+    { id: 1, name: 'Bogdan Seretean', email: 'bogdan.seretean@alchemy.com', role: 'Admin', initials: 'BS' }
+  ]);
+  const [editingTeam, setEditingTeam] = useState(null);
+  const [showTeamModal, setShowTeamModal] = useState(false);
+
+  const TeamMemberModal = () => {
+    const [f, sF] = useState(editingTeam || { name: '', email: '', role: 'Viewer', initials: '' });
+    const save = () => {
+      if (!f.name) return;
+      const initials = f.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      const member = { ...f, initials };
+      if (editingTeam) {
+        setTeamMembers(prev => prev.map(m => m.id === editingTeam.id ? { ...member, id: editingTeam.id } : m));
+      } else {
+        setTeamMembers(prev => [...prev, { ...member, id: Date.now() }]);
+      }
+      setShowTeamModal(false);
+      setEditingTeam(null);
+    };
+    return <Modal title={editingTeam ? 'Edit Member' : 'Add Team Member'} onClose={() => { setShowTeamModal(false); setEditingTeam(null); }}>
+      <div className="space-y-4">
+        <Input label="Full Name" value={f.name} onChange={e => sF({ ...f, name: e.target.value })} placeholder="e.g., Maria Popescu" />
+        <Input label="Email" value={f.email} onChange={e => sF({ ...f, email: e.target.value })} placeholder="e.g., maria@alchemy.com" />
+        <Sel label="Role" value={f.role} onChange={e => sF({ ...f, role: e.target.value })} opts={['Admin', 'Editor', 'Viewer']} />
+        <div className={`p-3 rounded-xl text-sm ${c('bg-gray-800', 'bg-gray-100')}`}>
+          <p className="font-medium mb-1">Role permissions:</p>
+          <div className={`space-y-1 text-xs ${c('text-gray-400', 'text-gray-500')}`}>
+            <p><strong className="text-violet-400">Admin</strong> — Full access, manage team & settings</p>
+            <p><strong className="text-cyan-400">Editor</strong> — Add/edit events, expenses, inventory</p>
+            <p><strong className="text-emerald-400">Viewer</strong> — View dashboard & reports only</p>
+          </div>
+        </div>
+        <button onClick={save} disabled={!f.name} className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl font-semibold shadow-lg shadow-violet-500/25 disabled:opacity-50">
+          {editingTeam ? 'Update' : 'Add'} Member
+        </button>
       </div>
-    </div>
-  );
+    </Modal>;
+  };
+
+  const Team = () => {
+    const roleColors = {
+      Admin: 'bg-violet-500/20 text-violet-400',
+      Editor: 'bg-cyan-500/20 text-cyan-400',
+      Viewer: 'bg-emerald-500/20 text-emerald-400'
+    };
+    const gradients = [
+      'from-violet-500 to-purple-600',
+      'from-cyan-500 to-blue-600',
+      'from-pink-500 to-rose-600',
+      'from-amber-500 to-orange-600',
+      'from-emerald-500 to-teal-600',
+    ];
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap justify-between items-center gap-4">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">Team</h1>
+          <button onClick={() => { setEditingTeam(null); setShowTeamModal(true); }} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl font-semibold hover:scale-105 transition-all shadow-lg shadow-violet-500/25">
+            <Plus size={18} />Add Member
+          </button>
+        </div>
+        <div className={`p-5 rounded-2xl border ${c('border-gray-700/50 bg-gray-800/50', 'border-gray-200 bg-white')}`}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Team Members</h3>
+            <span className={`text-sm ${c('text-gray-400', 'text-gray-500')}`}>{teamMembers.length} {teamMembers.length === 1 ? 'member' : 'members'}</span>
+          </div>
+          <div className="space-y-3">
+            {teamMembers.map((m, idx) => (
+              <div key={m.id} className={`flex items-center justify-between p-4 rounded-xl ${c('bg-gray-900/50 hover:bg-gray-900/70', 'bg-gray-50 hover:bg-gray-100')} transition-colors`}>
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${gradients[idx % gradients.length]} flex items-center justify-center text-white font-bold text-lg shadow-lg`}>
+                    {m.initials || m.name.charAt(0)}
+                  </div>
+                  <div>
+                    <p className="font-semibold">{m.name} {idx === 0 && <span className={`text-xs ${c('text-gray-500', 'text-gray-400')}`}>(You)</span>}</p>
+                    <p className={`text-sm ${c('text-gray-400', 'text-gray-500')}`}>{m.email}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`px-4 py-1.5 rounded-full text-sm font-medium ${roleColors[m.role] || roleColors.Viewer}`}>{m.role}</span>
+                  <button onClick={() => { setEditingTeam(m); setShowTeamModal(true); }} className={`p-2 rounded-xl ${c('hover:bg-gray-700', 'hover:bg-gray-200')}`}>
+                    <Edit size={16} className={c('text-gray-400', 'text-gray-500')} />
+                  </button>
+                  {idx !== 0 && (
+                    <button onClick={() => setTeamMembers(prev => prev.filter(x => x.id !== m.id))} className={`p-2 rounded-xl ${c('hover:bg-gray-700', 'hover:bg-gray-200')}`}>
+                      <Trash2 size={16} className="text-red-400" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // ─── MAIN RETURN ───
   return (
@@ -781,11 +868,10 @@ export default function OPSHub() {
       {modal === 'inventory' && <InventoryModal/>}
       {modal === 'birthday' && <BirthdayModal/>}
       {modal === 'importBirthdays' && <ImportBirthdaysModal/>}
-      {deleteConfirm && <DeleteModal/>}
+{showTeamModal && <TeamMemberModal/>}
       {showPrintReport && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-{showPrintReport && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowPrintReport(false)}>
           <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-auto relative" onClick={e => e.stopPropagation()}>
             <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center z-10">
