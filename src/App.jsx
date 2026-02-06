@@ -785,8 +785,23 @@ export default function OPSHub() {
       {showPrintReport && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-            <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center"><p className="text-gray-600 text-sm">Screenshot to save as image</p><button onClick={() => setShowPrintReport(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X size={20}/></button></div>
+{showPrintReport && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowPrintReport(false)}>
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-auto relative" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center z-10">
+              <p className="text-gray-600 text-sm">Screenshot to save as image</p>
+<button onClick={() => setShowPrintReport(false)} className="p-2.5 bg-gray-100 hover:bg-red-100 hover:text-red-600 rounded-xl text-gray-600 transition-colors">                <X size={24}/>
+              </button>
+            </div>
             <div className="p-8 text-gray-800">
+              <div className="text-center mb-8 pb-6 border-b-2 border-violet-500"><h1 className="text-3xl font-bold text-violet-600">OPS Department Report</h1><p className="text-gray-500 mt-2">Alchemy Bucharest • {MONTHS[selectedMonth]} {selectedYear}</p></div>
+              <div className="grid grid-cols-3 gap-4 mb-8"><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">${spentUSD.toFixed(0)}</p><p className="text-gray-600">Total Spent</p></div><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">{completed.length}</p><p className="text-gray-600">Events</p></div><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">{attendees}</p><p className="text-gray-600">Attendees</p></div></div>
+              <div className="mb-6"><h2 className="text-lg font-semibold mb-3">Events</h2><table className="w-full text-sm"><thead><tr className="bg-gray-100"><th className="text-left p-3">Event</th><th className="text-left p-3">Date</th><th className="text-right p-3">Budget</th><th className="text-right p-3">Actual</th></tr></thead><tbody>{events.map(e => <tr key={e.id} className="border-b"><td className="p-3">{e.name}</td><td className="p-3">{new Date(e.date).toLocaleDateString()}</td><td className="p-3 text-right">{e.budget} RON</td><td className="p-3 text-right">{e.actual || '-'}</td></tr>)}</tbody></table></div>
+              <div className="pt-4 border-t text-center text-gray-400 text-sm">Generated {new Date().toLocaleDateString()} • OPS Hub</div>
+            </div>
+          </div>
+        </div>
+      )}            <div className="p-8 text-gray-800">
               <div className="text-center mb-8 pb-6 border-b-2 border-violet-500"><h1 className="text-3xl font-bold text-violet-600">OPS Department Report</h1><p className="text-gray-500 mt-2">Alchemy Bucharest • {MONTHS[selectedMonth]} {selectedYear}</p></div>
               <div className="grid grid-cols-3 gap-4 mb-8"><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">${spentUSD.toFixed(0)}</p><p className="text-gray-600">Total Spent</p></div><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">{completed.length}</p><p className="text-gray-600">Events</p></div><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">{attendees}</p><p className="text-gray-600">Attendees</p></div></div>
               <div className="mb-6"><h2 className="text-lg font-semibold mb-3">Events</h2><table className="w-full text-sm"><thead><tr className="bg-gray-100"><th className="text-left p-3">Event</th><th className="text-left p-3">Date</th><th className="text-right p-3">Budget</th><th className="text-right p-3">Actual</th></tr></thead><tbody>{events.map(e => <tr key={e.id} className="border-b"><td className="p-3">{e.name}</td><td className="p-3">{new Date(e.date).toLocaleDateString()}</td><td className="p-3 text-right">{e.budget} RON</td><td className="p-3 text-right">{e.actual || '-'}</td></tr>)}</tbody></table></div>
