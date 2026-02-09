@@ -531,38 +531,95 @@ export default function App() {
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
 
-    const handleFile = async (e) => {
+const handleFile = async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
       setError(null); setPreview(null); setImporting(true);
       try {
         const data = await file.arrayBuffer();
-        const workbook = XLSX.read(data);
+        const workbook = XLSX.read(data, { cellDates: true });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(worksheet);
-        if (json.length === 0) { setError('The spreadsheet appears to be empty'); setImporting(false); return; }
+        const json = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+        
+        // Filter out empty rows and header-like rows
+        const dataRows = json.filter(row => {
+          const values = Object.values(row);
+          // Must have at least a name value in column C or D position
+          const hasName = values.some(v => typeof v === 'string' && v.trim().length > 1 && !v.toLowerCase().includes('name') && !v.toLowerCase().includes('date') && !v.toLowerCase().includes('birth'));
+          return hasName;
+        });
+
+        if (dataRows.length === 0) { setError('No valid data found in spreadsheet'); setImporting(false); return; }
+
         const monthNames = ['january','february','march','april','may','june','july','august','september','october','november','december'];
-        const mapped = json.map((row) => {
-          const keys = Object.keys(row), values = Object.values(row);
-          let month = values[0], day = values[1], firstName = values[2] || '', lastName = values[3] || '';
+
+        const mapped = dataRows.map((row) => {
+          const keys = Object.keys(row);
+          const values = Object.values(row);
+          
+          let month = null;
+          let day = null;
+          let firstName = '';
+          let lastName = '';
+
+          // Try to detect columns by header names first
           for (const key of keys) {
             const kl = key.toLowerCase();
-            if (kl.includes('month')) month = row[key];
-            else if (kl.includes('date') && !kl.includes('month')) day = row[key];
-            else if (kl.includes('first') || kl.includes('middle')) firstName = row[key];
-            else if (kl.includes('last')) lastName = row[key];
+            if (kl.includes('first') || kl.includes('middle')) firstName = String(row[key]).trim();
+            else if (kl.includes('last')) lastName = String(row[key]).trim();
           }
-          let monthNum = month;
-          if (typeof month === 'string') { const mi = monthNames.findIndex(m => m.startsWith(month.toLowerCase().trim())); monthNum = mi !== -1 ? mi + 1 : parseInt(month) || 0; }
-          const dateF = String(parseInt(monthNum)||0).padStart(2,'0') + '-' + String(parseInt(day)||1).padStart(2,'0');
-          return { name: `${String(firstName).trim()} ${String(lastName).trim()}`.trim(), date: dateF };
-        }).filter(b => b.name && b.date && b.date !== '00-00' && !b.date.includes('NaN'));
-        if (mapped.length === 0) { setError('Could not find valid data.'); setImporting(false); return; }
+
+          // If no header match, use positional (C = first name, D = last name)
+          if (!firstName && values[2]) firstName = String(values[2]).trim();
+          if (!lastName && values[3]) lastName = String(values[3]).trim();
+
+          // Try to get date from Column B (Date of Birth - full date like 1/8/1981)
+          const dateVal = values[1] || row[keys.find(k => k.toLowerCase().includes('date') && !k.toLowerCase().includes('month'))] || '';
+          
+          if (dateVal instanceof Date) {
+            // XLSX parsed it as a Date object
+            month = dateVal.getMonth() + 1;
+            day = dateVal.getDate();
+          } else if (typeof dateVal === 'string' && dateVal.includes('/')) {
+            // Format like "1/8/1981" or "12/25/1990"
+            const parts = dateVal.split('/');
+            month = parseInt(parts[0]);
+            day = parseInt(parts[1]);
+          } else if (typeof dateVal === 'number') {
+            // Excel serial date number
+            const excelDate = new Date((dateVal - 25569) * 86400 * 1000);
+            month = excelDate.getMonth() + 1;
+            day = excelDate.getDate();
+          }
+
+          // If no date from column B, try column A for month
+          if (!month) {
+            const monthVal = values[0] || '';
+            const monthStr = String(monthVal).toLowerCase().trim();
+            const mi = monthNames.findIndex(m => m.startsWith(monthStr));
+            if (mi !== -1) month = mi + 1;
+            else month = parseInt(monthVal) || 0;
+            
+            // Try to get day from column B as just a number
+            day = parseInt(dateVal) || 1;
+          }
+
+          if (!month || !day) return null;
+
+          const dateFormatted = String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+          const fullName = `${firstName} ${lastName}`.trim();
+
+          // Skip header rows
+          if (fullName.toLowerCase().includes('name') || fullName.toLowerCase().includes('date')) return null;
+
+          return { name: fullName, date: dateFormatted };
+        }).filter(b => b && b.name && b.date && b.date !== '00-00' && !b.date.includes('NaN'));
+
+        if (mapped.length === 0) { setError('Could not parse any birthday data. Check your file format.'); setImporting(false); return; }
         setPreview(mapped);
-      } catch (err) { setError("Failed to read file. Please make sure it's a valid Excel file (.xlsx)"); }
+      } catch (err) { console.error('File parse error:', err); setError("Failed to read file. Please make sure it's a valid Excel file (.xlsx)"); }
       setImporting(false);
     };
-
     const confirmImport = async () => {
       if (!preview) return;
       setSaving(true); setError(null);
@@ -1174,27 +1231,19 @@ const [teamMembers, setTeamMembers] = useState([
       {modal === 'vendor' && <VendorModal/>}
       {modal === 'inventory' && <InventoryModal/>}
       {modal === 'birthday' && <BirthdayModal/>}
-      {modal === 'importBirthdays' && <ImportBirthdaysModal/>}
-{showTeamModal && <TeamMemberModal/>}
+{modal === 'importBirthdays' && <ImportBirthdaysModal/>}
+      {deleteConfirm && <DeleteModal/>}
+      {showTeamModal && <TeamMemberModal/>}
       {showPrintReport && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowPrintReport(false)}>
           <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-auto relative" onClick={e => e.stopPropagation()}>
             <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center z-10">
               <p className="text-gray-600 text-sm">Screenshot to save as image</p>
-<button onClick={() => setShowPrintReport(false)} className="p-2.5 bg-gray-100 hover:bg-red-100 hover:text-red-600 rounded-xl text-gray-600 transition-colors">                <X size={24}/>
+              <button onClick={() => setShowPrintReport(false)} className="p-2.5 bg-gray-100 hover:bg-red-100 hover:text-red-600 rounded-xl text-gray-600 transition-colors">
+                <X size={22}/>
               </button>
             </div>
             <div className="p-8 text-gray-800">
-              <div className="text-center mb-8 pb-6 border-b-2 border-violet-500"><h1 className="text-3xl font-bold text-violet-600">OPS Department Report</h1><p className="text-gray-500 mt-2">Alchemy Bucharest • {MONTHS[selectedMonth]} {selectedYear}</p></div>
-              <div className="grid grid-cols-3 gap-4 mb-8"><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">${spentUSD.toFixed(0)}</p><p className="text-gray-600">Total Spent</p></div><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">{completed.length}</p><p className="text-gray-600">Events</p></div><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">{attendees}</p><p className="text-gray-600">Attendees</p></div></div>
-              <div className="mb-6"><h2 className="text-lg font-semibold mb-3">Events</h2><table className="w-full text-sm"><thead><tr className="bg-gray-100"><th className="text-left p-3">Event</th><th className="text-left p-3">Date</th><th className="text-right p-3">Budget</th><th className="text-right p-3">Actual</th></tr></thead><tbody>{events.map(e => <tr key={e.id} className="border-b"><td className="p-3">{e.name}</td><td className="p-3">{new Date(e.date).toLocaleDateString()}</td><td className="p-3 text-right">{e.budget} RON</td><td className="p-3 text-right">{e.actual || '-'}</td></tr>)}</tbody></table></div>
-              <div className="pt-4 border-t text-center text-gray-400 text-sm">Generated {new Date().toLocaleDateString()} • OPS Hub</div>
-            </div>
-          </div>
-        </div>
-      )}            <div className="p-8 text-gray-800">
               <div className="text-center mb-8 pb-6 border-b-2 border-violet-500"><h1 className="text-3xl font-bold text-violet-600">OPS Department Report</h1><p className="text-gray-500 mt-2">Alchemy Bucharest • {MONTHS[selectedMonth]} {selectedYear}</p></div>
               <div className="grid grid-cols-3 gap-4 mb-8"><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">${spentUSD.toFixed(0)}</p><p className="text-gray-600">Total Spent</p></div><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">{completed.length}</p><p className="text-gray-600">Events</p></div><div className="text-center p-5 bg-gray-50 rounded-xl"><p className="text-3xl font-bold text-violet-600">{attendees}</p><p className="text-gray-600">Attendees</p></div></div>
               <div className="mb-6"><h2 className="text-lg font-semibold mb-3">Events</h2><table className="w-full text-sm"><thead><tr className="bg-gray-100"><th className="text-left p-3">Event</th><th className="text-left p-3">Date</th><th className="text-right p-3">Budget</th><th className="text-right p-3">Actual</th></tr></thead><tbody>{events.map(e => <tr key={e.id} className="border-b"><td className="p-3">{e.name}</td><td className="p-3">{new Date(e.date).toLocaleDateString()}</td><td className="p-3 text-right">{e.budget} RON</td><td className="p-3 text-right">{e.actual || '-'}</td></tr>)}</tbody></table></div>
