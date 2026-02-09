@@ -103,8 +103,8 @@ export default function App() {
       setSession(session);
       setAuthLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+if (newSession?.user?.id !== session?.user?.id) setSession(newSession);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -366,7 +366,7 @@ const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-
   };
 
   const EventModal = () => {
-    const [f, sF] = useState(editItem || { name: '', type: 'TGIT', date: '', budget: '', notes: '' });
+const [f, sF] = useState(editItem || { name: '', type: 'TGIT', date: '', time: '', budget: '', notes: '' });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const save = async () => {
