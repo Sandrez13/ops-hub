@@ -323,8 +323,10 @@ const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-
         <option value="all">All Types</option>
         {f.map(x => <option key={x} value={x}>{x}</option>)}
       </select>}
-    </div>
-const ExpenseModal = () => {
+ </div>
+  );
+
+  const ExpenseModal = () => {
     const [f, sF] = useState(editItem || { item: '', category: categories[0], amount: '', currency: 'RON', vendor: '', vendor_custom: '', date: new Date().toISOString().split('T')[0], notes: '', invoice_url: '' });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
@@ -389,7 +391,7 @@ const ExpenseModal = () => {
       </div>
     </Modal>;
   };
-  
+
   const EventModal = () => {
 const [f, sF] = useState(editItem || { name: '', type: 'TGIT', date: '', time: '', budget: '', notes: '' });
     const [saving, setSaving] = useState(false);
