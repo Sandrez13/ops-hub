@@ -104,8 +104,7 @@ export default function App() {
       setAuthLoading(false);
     });
 const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-if (newSession?.user?.id !== session?.user?.id) setSession(newSession);
-    });
+setSession(prev => (newSession?.user?.id !== prev?.user?.id ? newSession : prev));    });
     return () => subscription.unsubscribe();
   }, []);
 
