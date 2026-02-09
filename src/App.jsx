@@ -662,7 +662,7 @@ const handleFile = async (e) => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat icon={Calendar} label="Events" value={completed.length} sub={`${upcoming.length} upcoming`} gradient="from-violet-500 to-purple-600"/>
         <Stat icon={Users} label="Attendees" value={attendees} sub={`${costPerPerson} RON avg`} gradient="from-cyan-500 to-blue-600"/>
-<Stat icon={Gift} label="Birthdays" value={birthdays.filter(b => { const parts = b.date?.split('-'); if (!parts) return false; const m = parseInt(parts[0]); const d = parseInt(parts[1]); const bm = m - 1; if (bm < new Date().getMonth()) return true; if (bm === new Date().getMonth() && d <= new Date().getDate()) return true; return false; }).length} sub={`of ${birthdays.length} this year`} gradient="from-pink-500 to-rose-600"/>
+<Stat icon={Gift} label="Birthdays" value={`${birthdays.filter(b => { const parts = b.date?.split('-'); if (!parts) return false; const m = parseInt(parts[0]); if (m !== selectedMonth + 1) return false; const d = parseInt(parts[1]); const today = new Date(); if (selectedMonth < today.getMonth()) return true; if (selectedMonth === today.getMonth() && d <= today.getDate()) return true; return false; }).length}/${birthdays.filter(b => { const parts = b.date?.split('-'); return parts && parseInt(parts[0]) === selectedMonth + 1; }).length}`} sub={`celebrated in ${MONTHS[selectedMonth].slice(0,3)}`} gradient="from-pink-500 to-rose-600"/>
         <Stat icon={Coffee} label="TGIT" value={events.filter(e => e.type === 'TGIT').length} sub="happy hours" gradient="from-amber-500 to-orange-600"/>
       </div>
 
