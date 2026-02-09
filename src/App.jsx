@@ -539,83 +539,68 @@ const handleFile = async (e) => {
         const data = await file.arrayBuffer();
         const workbook = XLSX.read(data, { cellDates: true });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-        
-        // Filter out empty rows and header-like rows
-        const dataRows = json.filter(row => {
-          const values = Object.values(row);
-          // Must have at least a name value in column C or D position
-          const hasName = values.some(v => typeof v === 'string' && v.trim().length > 1 && !v.toLowerCase().includes('name') && !v.toLowerCase().includes('date') && !v.toLowerCase().includes('birth'));
-          return hasName;
-        });
+        // range: start from row index to skip empty rows, raw: false to let XLSX parse dates
+        const json = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
 
-        if (dataRows.length === 0) { setError('No valid data found in spreadsheet'); setImporting(false); return; }
+        if (json.length === 0) { setError('The spreadsheet appears to be empty'); setImporting(false); return; }
 
-        const monthNames = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+        const mapped = [];
 
-        const mapped = dataRows.map((row) => {
+        for (const row of json) {
           const keys = Object.keys(row);
           const values = Object.values(row);
-          
-          let month = null;
-          let day = null;
-          let firstName = '';
-          let lastName = '';
 
-          // Try to detect columns by header names first
+          // Get first name (column C) and last name (column D)
+          let firstName = String(values[2] || '').trim();
+          let lastName = String(values[3] || '').trim();
+
+          // Also try matching by header names
           for (const key of keys) {
             const kl = key.toLowerCase();
             if (kl.includes('first') || kl.includes('middle')) firstName = String(row[key]).trim();
             else if (kl.includes('last')) lastName = String(row[key]).trim();
           }
 
-          // If no header match, use positional (C = first name, D = last name)
-          if (!firstName && values[2]) firstName = String(values[2]).trim();
-          if (!lastName && values[3]) lastName = String(values[3]).trim();
+          const fullName = `${firstName} ${lastName}`.trim();
 
-          // Try to get date from Column B (Date of Birth - full date like 1/8/1981)
-          const dateVal = values[1] || row[keys.find(k => k.toLowerCase().includes('date') && !k.toLowerCase().includes('month'))] || '';
-          
-          if (dateVal instanceof Date) {
-            // XLSX parsed it as a Date object
+          // Skip if no name, or if it looks like a header row
+          if (!fullName || fullName.toLowerCase().includes('name') || fullName.toLowerCase().includes('date') || fullName.toLowerCase().includes('birth')) continue;
+
+          // Get date from column B (Date of Birth - full date)
+          let dateVal = values[1];
+          // Also try by header name
+          for (const key of keys) {
+            const kl = key.toLowerCase();
+            if (kl.includes('date') && !kl.includes('month')) dateVal = row[key];
+          }
+
+          let month = null;
+          let day = null;
+
+          if (dateVal instanceof Date && !isNaN(dateVal)) {
             month = dateVal.getMonth() + 1;
             day = dateVal.getDate();
           } else if (typeof dateVal === 'string' && dateVal.includes('/')) {
-            // Format like "1/8/1981" or "12/25/1990"
             const parts = dateVal.split('/');
             month = parseInt(parts[0]);
             day = parseInt(parts[1]);
+          } else if (typeof dateVal === 'string' && dateVal.includes('-')) {
+            const parts = dateVal.split('-');
+            // Could be YYYY-MM-DD or MM-DD
+            if (parts.length === 3) { month = parseInt(parts[1]); day = parseInt(parts[2]); }
+            else if (parts.length === 2) { month = parseInt(parts[0]); day = parseInt(parts[1]); }
           } else if (typeof dateVal === 'number') {
-            // Excel serial date number
             const excelDate = new Date((dateVal - 25569) * 86400 * 1000);
-            month = excelDate.getMonth() + 1;
-            day = excelDate.getDate();
+            if (!isNaN(excelDate)) { month = excelDate.getMonth() + 1; day = excelDate.getDate(); }
           }
 
-          // If no date from column B, try column A for month
-          if (!month) {
-            const monthVal = values[0] || '';
-            const monthStr = String(monthVal).toLowerCase().trim();
-            const mi = monthNames.findIndex(m => m.startsWith(monthStr));
-            if (mi !== -1) month = mi + 1;
-            else month = parseInt(monthVal) || 0;
-            
-            // Try to get day from column B as just a number
-            day = parseInt(dateVal) || 1;
-          }
-
-          if (!month || !day) return null;
+          if (!month || !day || isNaN(month) || isNaN(day)) continue;
 
           const dateFormatted = String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-          const fullName = `${firstName} ${lastName}`.trim();
+          mapped.push({ name: fullName, date: dateFormatted });
+        }
 
-          // Skip header rows
-          if (fullName.toLowerCase().includes('name') || fullName.toLowerCase().includes('date')) return null;
-
-          return { name: fullName, date: dateFormatted };
-        }).filter(b => b && b.name && b.date && b.date !== '00-00' && !b.date.includes('NaN'));
-
-        if (mapped.length === 0) { setError('Could not parse any birthday data. Check your file format.'); setImporting(false); return; }
+        if (mapped.length === 0) { setError('Could not parse any birthday data. Make sure Column B has dates and Columns C/D have names.'); setImporting(false); return; }
         setPreview(mapped);
       } catch (err) { console.error('File parse error:', err); setError("Failed to read file. Please make sure it's a valid Excel file (.xlsx)"); }
       setImporting(false);
