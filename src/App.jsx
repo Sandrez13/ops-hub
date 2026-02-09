@@ -324,15 +324,18 @@ const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-
         {f.map(x => <option key={x} value={x}>{x}</option>)}
       </select>}
     </div>
-  );const ExpenseModal = () => {
-    const [f, sF] = useState(editItem || { item: '', category: categories[0], amount: '', currency: 'RON', vendor: '', date: new Date().toISOString().split('T')[0], notes: '', invoice_url: '' });
+const ExpenseModal = () => {
+    const [f, sF] = useState(editItem || { item: '', category: categories[0], amount: '', currency: 'RON', vendor: '', vendor_custom: '', date: new Date().toISOString().split('T')[0], notes: '', invoice_url: '' });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
+    const [vendorMode, setVendorMode] = useState(editItem?.vendor && !vendors.find(v => v.name === editItem?.vendor) ? 'custom' : 'select');
     const save = async () => {
-      if (!f.item || !f.amount) return;
+      if (!f.amount) return;
       setSaving(true); setError(null);
       try {
-        const data = { ...f, amount: parseFloat(f.amount) };
+        const finalVendor = vendorMode === 'custom' ? f.vendor_custom : f.vendor;
+        const data = { ...f, vendor: finalVendor, amount: parseFloat(f.amount) };
+        delete data.vendor_custom;
         if (editItem) { const updated = await db.update('ops_expenses', editItem.id, data); setExpenses(prev => prev.map(e => e.id === editItem.id ? updated : e)); }
         else { const inserted = await db.insert('ops_expenses', data); setExpenses(prev => [inserted, ...prev]); }
         setModal(null); setEditItem(null);
@@ -343,27 +346,50 @@ const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-
     return <Modal title={editItem ? 'Edit Expense' : 'Add Expense'} onClose={() => { setModal(null); setEditItem(null); }}>
       <div className="space-y-4">
         {error && <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center gap-2"><AlertCircle size={16} className="text-red-400"/><p className="text-sm text-red-400">{error}</p></div>}
-        <Input label="Item" value={f.item} onChange={e => sF({...f, item: e.target.value})} placeholder="Description"/>
+        
+        {/* Vendor first */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className={`text-sm font-medium ${c('text-gray-400', 'text-gray-600')}`}>Vendor</label>
+            <div className="flex gap-1">
+              <button onClick={() => setVendorMode('select')} className={`text-xs px-2.5 py-1 rounded-lg transition-colors ${vendorMode === 'select' ? 'bg-violet-500/20 text-violet-400' : c('text-gray-500 hover:text-gray-300', 'text-gray-400 hover:text-gray-600')}`}>From list</button>
+              <button onClick={() => setVendorMode('custom')} className={`text-xs px-2.5 py-1 rounded-lg transition-colors ${vendorMode === 'custom' ? 'bg-violet-500/20 text-violet-400' : c('text-gray-500 hover:text-gray-300', 'text-gray-400 hover:text-gray-600')}`}>Other</button>
+            </div>
+          </div>
+          {vendorMode === 'select' ? (
+            <select value={f.vendor || ''} onChange={e => sF({...f, vendor: e.target.value})} className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-violet-500 transition-colors ${c('bg-gray-800 border-gray-700 text-white', 'bg-gray-50 border-gray-200 text-gray-900')}`}>
+              <option value="">Select vendor...</option>
+              {vendors.filter(v => v.favorite).length > 0 && <optgroup label="⭐ Favorites">{vendors.filter(v => v.favorite).map(v => <option key={v.id} value={v.name}>{v.name}</option>)}</optgroup>}
+              <optgroup label="All Vendors">{vendors.filter(v => !v.favorite).map(v => <option key={v.id} value={v.name}>{v.name}</option>)}</optgroup>
+            </select>
+          ) : (
+            <input value={f.vendor_custom || ''} onChange={e => sF({...f, vendor_custom: e.target.value})} placeholder="e.g., Corner shop, Amazon, etc." className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-violet-500 transition-colors ${c('bg-gray-800 border-gray-700 text-white', 'bg-gray-50 border-gray-200 text-gray-900')}`}/>
+          )}
+        </div>
+
         <Sel label="Category" value={f.category} onChange={e => sF({...f, category: e.target.value})} opts={categories}/>
+        
         <div className="flex gap-3"><div className="flex-1"><Input label="Amount" type="number" value={f.amount} onChange={e => sF({...f, amount: e.target.value})}/>{eq && <p className="text-xs text-violet-400 mt-1 font-medium">{eq}</p>}</div><div className="w-28"><Sel label="Currency" value={f.currency} onChange={e => sF({...f, currency: e.target.value})} opts={['RON','USD','EUR','GBP','CHF']}/></div></div>
-        <Sel label="Vendor" value={f.vendor || ''} onChange={e => sF({...f, vendor: e.target.value})} opts={['', ...vendors.map(v => v.name)]}/>
+        
         <Input label="Date" type="date" value={f.date} onChange={e => sF({...f, date: e.target.value})}/>
+        
         <div>
           <label className={`text-sm font-medium ${c('text-gray-400', 'text-gray-600')}`}>Invoice Link (optional)</label>
           <div className={`flex mt-1.5 rounded-xl border-2 overflow-hidden ${c('bg-gray-800 border-gray-700', 'bg-gray-50 border-gray-200')}`}>
             <div className={`px-3 flex items-center ${c('bg-gray-700', 'bg-gray-200')}`}><FileText size={16} className={c('text-gray-400', 'text-gray-500')}/></div>
             <input value={f.invoice_url || ''} onChange={e => sF({...f, invoice_url: e.target.value})} placeholder="Paste Google Drive, Dropbox link..." className={`flex-1 px-3 py-3 bg-transparent outline-none ${c('text-white', 'text-gray-900')}`}/>
           </div>
-          <p className={`text-xs mt-1 ${c('text-gray-500', 'text-gray-400')}`}>Link to invoice stored in Drive, Dropbox, etc.</p>
         </div>
-        <TextArea label="Notes (optional)" value={f.notes || ''} onChange={e => sF({...f, notes: e.target.value})} placeholder="Any additional details..."/>
-        <button onClick={save} disabled={saving || !f.item || !f.amount} className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg shadow-violet-500/25 disabled:opacity-50 flex items-center justify-center gap-2">
+        
+        <TextArea label="Notes / Item Description (optional)" value={f.notes || ''} onChange={e => sF({...f, notes: e.target.value})} placeholder="What was purchased, quantity, any details..."/>
+        
+        <button onClick={save} disabled={saving || !f.amount} className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg shadow-violet-500/25 disabled:opacity-50 flex items-center justify-center gap-2">
           {saving && <Loader2 size={18} className="animate-spin"/>}{editItem ? 'Update' : 'Add'} Expense
         </button>
       </div>
     </Modal>;
   };
-
+  
   const EventModal = () => {
 const [f, sF] = useState(editItem || { name: '', type: 'TGIT', date: '', time: '', budget: '', notes: '' });
     const [saving, setSaving] = useState(false);
