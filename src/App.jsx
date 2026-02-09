@@ -227,7 +227,7 @@ export default function App() {
   const change = prevMonthTotal > 0 ? ((spentRON - prevMonthTotal) / prevMonthTotal * 100).toFixed(1) : '0.0';
   const costPerPerson = attendees > 0 ? (completed.reduce((s, e) => s + (e.actual || 0), 0) / attendees).toFixed(0) : 0;
 
-  const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-'); if (!parts || parts.length < 2) return false; return parseInt(parts[0]) === selectedMonth + 1; }).sort((a, b) => a.date.localeCompare(b.date));
+const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-'); if (!parts || parts.length < 2) return false; const m = parseInt(parts[0]); const d = parseInt(parts[1]); if (m !== selectedMonth + 1) return false; const today = new Date(); if (selectedMonth < today.getMonth()) return false; if (selectedMonth === today.getMonth() && d <= today.getDate()) return false; return true; }).sort((a, b) => a.date.localeCompare(b.date));
 
   const filteredEvents = events.filter(e => { const matchSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase()); const matchType = filterType === 'all' || e.type === filterType; return matchSearch && matchType; });
   const filteredExpenses = expenses.filter(e => { const matchSearch = e.item.toLowerCase().includes(searchTerm.toLowerCase()) || (e.vendor || '').toLowerCase().includes(searchTerm.toLowerCase()); const matchCat = filterType === 'all' || e.category === filterType; return matchSearch && matchCat; });
