@@ -11,7 +11,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const COLORS = ['#8B5CF6', '#06B6D4', '#EC4899', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#84CC16'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const eventTypes = [{ name: 'TGIT', icon: '🍻', color: '#F59E0B' }, { name: 'Monthly Outing', icon: '🎳', color: '#06B6D4' }, { name: 'Birthday', icon: '🎂', color: '#EC4899' }, { name: 'Holiday', icon: '🎄', color: '#10B981' }, { name: 'Spontaneous', icon: '✨', color: '#8B5CF6' }];
+const eventTypes = [{ name: 'TGIT', icon: '🍻', color: '#F59E0B' }, { name: 'Monthly Outing', icon: '🎳', color: '#06B6D4' }, { name: 'Birthday', icon: '🎂', color: '#EC4899' }, { name: 'Holiday', icon: '🎄', color: '#10B981' }, { name: 'Spontaneous', icon: '✨', color: '#8B5CF6' }, { name: 'Meetup', icon: '🎤', color: '#6366F1' }, { name: 'External Event', icon: '🌍', color: '#0EA5E9' }, { name: 'Internal Event', icon: '🏢', color: '#14B8A6' }, { name: 'Gathering', icon: '🤝', color: '#F472B6' }, { name: 'Other', icon: '📌', color: '#78716C' }];
 const categories = ['Snacks & Beverages', 'Event Catering', 'Birthday', 'Office Enhancement', 'Consumables', 'Swag & Goodies', 'Decorations', 'Holiday', 'Kids & Family', 'Other'];
 
 const DEFAULT_RATES = { EUR: 4.9770, USD: 4.5800, GBP: 5.8730, CHF: 5.5565 };
@@ -385,7 +385,7 @@ const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-
         {error && <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center gap-2"><AlertCircle size={16} className="text-red-400"/><p className="text-sm text-red-400">{error}</p></div>}
         <Input label="Event Name" value={f.name} onChange={e => sF({...f, name: e.target.value})} placeholder="e.g., Team Building"/>
         <Sel label="Type" value={f.type} onChange={e => sF({...f, type: e.target.value})} opts={eventTypes.map(t => t.name)}/>
-        <Input label="Date" type="date" value={f.date} onChange={e => sF({...f, date: e.target.value})}/>
+<div className="flex gap-3"><div className="flex-1"><Input label="Date" type="date" value={f.date} onChange={e => sF({...f, date: e.target.value})}/></div><div className="flex-1"><Input label="Time" type="time" value={f.time || ''} onChange={e => sF({...f, time: e.target.value})}/></div></div>
         <Input label="Budget (RON)" type="number" value={f.budget} onChange={e => sF({...f, budget: e.target.value})} placeholder="0"/>
         <TextArea label="Notes (optional)" value={f.notes || ''} onChange={e => sF({...f, notes: e.target.value})} placeholder="Reminders, details..."/>
         <button onClick={save} disabled={saving || !f.name || !f.date} className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg shadow-violet-500/25 disabled:opacity-50 flex items-center justify-center gap-2">
