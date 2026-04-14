@@ -42,7 +42,7 @@ const db = {
 };
 
 // ─── Auth Wrapper ───
-function LoginPage() {
+function LoginPage({ authError }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -69,10 +69,10 @@ function LoginPage() {
         <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8">
           <h2 className="text-xl font-semibold text-white text-center mb-2">Welcome</h2>
           <p className="text-gray-400 text-center text-sm mb-8">Sign in with your Alchemy account to continue</p>
-          {error && (
+          {(error || authError) && (
             <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 mb-4 flex items-center gap-2">
               <AlertCircle size={16} className="text-red-400" />
-              <p className="text-sm text-red-400">{error}</p>
+              <p className="text-sm text-red-400">{error || authError}</p>
             </div>
           )}
           <button
@@ -97,14 +97,30 @@ function LoginPage() {
 export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
+
+  const isAlchemyEmail = (email) => email?.endsWith('@alchemy.com');
+
+  const handleSession = async (newSession) => {
+    if (newSession && !isAlchemyEmail(newSession.user?.email)) {
+      await supabase.auth.signOut();
+      setAuthError('Access restricted to @alchemy.com accounts only.');
+      setSession(null);
+    } else {
+      setAuthError(null);
+      setSession(newSession);
+    }
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setAuthLoading(false);
+      handleSession(session).finally(() => setAuthLoading(false));
     });
-const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-setSession(prev => (newSession?.user?.id !== prev?.user?.id ? newSession : prev));    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      handleSession(newSession);
+    });
+
     return () => subscription.unsubscribe();
   }, []);
 
@@ -116,9 +132,11 @@ setSession(prev => (newSession?.user?.id !== prev?.user?.id ? newSession : prev)
     );
   }
 
-  if (!session) return <LoginPage />;
+  if (!session) return <LoginPage authError={authError} />;
   return <OPSHub session={session} />;
-}function OPSHub({ session }) {
+}
+
+function OPSHub({ session }) {
   const [tab, setTab] = useState('dashboard');
   const [events, setEvents] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -226,12 +244,14 @@ setSession(prev => (newSession?.user?.id !== prev?.user?.id ? newSession : prev)
   const change = prevMonthTotal > 0 ? ((spentRON - prevMonthTotal) / prevMonthTotal * 100).toFixed(1) : '0.0';
   const costPerPerson = attendees > 0 ? (completed.reduce((s, e) => s + (e.actual || 0), 0) / attendees).toFixed(0) : 0;
 
-const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-'); if (!parts || parts.length < 2) return false; const m = parseInt(parts[0]); const d = parseInt(parts[1]); if (m !== selectedMonth + 1) return false; const today = new Date(); if (selectedMonth < today.getMonth()) return false; if (selectedMonth === today.getMonth() && d <= today.getDate()) return false; return true; }).sort((a, b) => a.date.localeCompare(b.date));
+  const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-'); if (!parts || parts.length < 2) return false; const m = parseInt(parts[0]); const d = parseInt(parts[1]); if (m !== selectedMonth + 1) return false; const today = new Date(); if (selectedMonth < today.getMonth()) return false; if (selectedMonth === today.getMonth() && d <= today.getDate()) return false; return true; }).sort((a, b) => a.date.localeCompare(b.date));
 
   const filteredEvents = events.filter(e => { const matchSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase()); const matchType = filterType === 'all' || e.type === filterType; return matchSearch && matchType; });
   const filteredExpenses = expenses.filter(e => { const matchSearch = e.item.toLowerCase().includes(searchTerm.toLowerCase()) || (e.vendor || '').toLowerCase().includes(searchTerm.toLowerCase()); const matchCat = filterType === 'all' || e.category === filterType; return matchSearch && matchCat; });
 
-  const c = (d, l) => dark ? d : l;const deleteItem = async (type, id) => {
+  const c = (d, l) => dark ? d : l;
+
+  const deleteItem = async (type, id) => {
     setSyncing(true); setSyncError(null);
     try {
       const tableMap = { event: 'ops_events', expense: 'ops_expenses', vendor: 'ops_vendors', inventory: 'ops_inventory', birthday: 'ops_birthdays' };
@@ -323,7 +343,7 @@ const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-
         <option value="all">All Types</option>
         {f.map(x => <option key={x} value={x}>{x}</option>)}
       </select>}
- </div>
+    </div>
   );
 
   const ExpenseModal = () => {
@@ -348,8 +368,6 @@ const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-
     return <Modal title={editItem ? 'Edit Expense' : 'Add Expense'} onClose={() => { setModal(null); setEditItem(null); }}>
       <div className="space-y-4">
         {error && <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center gap-2"><AlertCircle size={16} className="text-red-400"/><p className="text-sm text-red-400">{error}</p></div>}
-        
-        {/* Vendor first */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className={`text-sm font-medium ${c('text-gray-400', 'text-gray-600')}`}>Vendor</label>
@@ -368,13 +386,9 @@ const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-
             <input value={f.vendor_custom || ''} onChange={e => sF({...f, vendor_custom: e.target.value})} placeholder="e.g., Corner shop, Amazon, etc." className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-violet-500 transition-colors ${c('bg-gray-800 border-gray-700 text-white', 'bg-gray-50 border-gray-200 text-gray-900')}`}/>
           )}
         </div>
-
         <Sel label="Category" value={f.category} onChange={e => sF({...f, category: e.target.value})} opts={categories}/>
-        
         <div className="flex gap-3"><div className="flex-1"><Input label="Amount" type="number" value={f.amount} onChange={e => sF({...f, amount: e.target.value})}/>{eq && <p className="text-xs text-violet-400 mt-1 font-medium">{eq}</p>}</div><div className="w-28"><Sel label="Currency" value={f.currency} onChange={e => sF({...f, currency: e.target.value})} opts={['RON','USD','EUR','GBP','CHF']}/></div></div>
-        
         <Input label="Date" type="date" value={f.date} onChange={e => sF({...f, date: e.target.value})}/>
-        
         <div>
           <label className={`text-sm font-medium ${c('text-gray-400', 'text-gray-600')}`}>Invoice Link (optional)</label>
           <div className={`flex mt-1.5 rounded-xl border-2 overflow-hidden ${c('bg-gray-800 border-gray-700', 'bg-gray-50 border-gray-200')}`}>
@@ -382,9 +396,7 @@ const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-
             <input value={f.invoice_url || ''} onChange={e => sF({...f, invoice_url: e.target.value})} placeholder="Paste Google Drive, Dropbox link..." className={`flex-1 px-3 py-3 bg-transparent outline-none ${c('text-white', 'text-gray-900')}`}/>
           </div>
         </div>
-        
         <TextArea label="Notes / Item Description (optional)" value={f.notes || ''} onChange={e => sF({...f, notes: e.target.value})} placeholder="What was purchased, quantity, any details..."/>
-        
         <button onClick={save} disabled={saving || !f.amount} className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg shadow-violet-500/25 disabled:opacity-50 flex items-center justify-center gap-2">
           {saving && <Loader2 size={18} className="animate-spin"/>}{editItem ? 'Update' : 'Add'} Expense
         </button>
@@ -393,7 +405,7 @@ const upcomingBirthdays = birthdays.filter(b => { const parts = b.date?.split('-
   };
 
   const EventModal = () => {
-const [f, sF] = useState(editItem || { name: '', type: 'TGIT', date: '', time: '', budget: '', expected_attendees: '', notes: '' });
+    const [f, sF] = useState(editItem || { name: '', type: 'TGIT', date: '', time: '', budget: '', expected_attendees: '', notes: '' });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const save = async () => {
@@ -412,9 +424,9 @@ const [f, sF] = useState(editItem || { name: '', type: 'TGIT', date: '', time: '
         {error && <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center gap-2"><AlertCircle size={16} className="text-red-400"/><p className="text-sm text-red-400">{error}</p></div>}
         <Input label="Event Name" value={f.name} onChange={e => sF({...f, name: e.target.value})} placeholder="e.g., Team Building"/>
         <Sel label="Type" value={f.type} onChange={e => sF({...f, type: e.target.value})} opts={eventTypes.map(t => t.name)}/>
-<div className="flex gap-3"><div className="flex-1"><Input label="Date" type="date" value={f.date} onChange={e => sF({...f, date: e.target.value})}/></div><div className="flex-1"><Input label="Time" type="time" value={f.time || ''} onChange={e => sF({...f, time: e.target.value})}/></div></div>
-<Input label="Budget (RON)" type="number" value={f.budget} onChange={e => sF({...f, budget: e.target.value})} placeholder="0"/>
-<Input label="Expected Attendees (optional)" type="number" value={f.expected_attendees || ''} onChange={e => sF({...f, expected_attendees: e.target.value})} placeholder="e.g., 30"/>
+        <div className="flex gap-3"><div className="flex-1"><Input label="Date" type="date" value={f.date} onChange={e => sF({...f, date: e.target.value})}/></div><div className="flex-1"><Input label="Time" type="time" value={f.time || ''} onChange={e => sF({...f, time: e.target.value})}/></div></div>
+        <Input label="Budget (RON)" type="number" value={f.budget} onChange={e => sF({...f, budget: e.target.value})} placeholder="0"/>
+        <Input label="Expected Attendees (optional)" type="number" value={f.expected_attendees || ''} onChange={e => sF({...f, expected_attendees: e.target.value})} placeholder="e.g., 30"/>
         <TextArea label="Notes (optional)" value={f.notes || ''} onChange={e => sF({...f, notes: e.target.value})} placeholder="Reminders, details..."/>
         <button onClick={save} disabled={saving || !f.name || !f.date} className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg shadow-violet-500/25 disabled:opacity-50 flex items-center justify-center gap-2">
           {saving && <Loader2 size={18} className="animate-spin"/>}{editItem ? 'Update' : 'Create'} Event
@@ -559,7 +571,7 @@ const [f, sF] = useState(editItem || { name: '', type: 'TGIT', date: '', time: '
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
 
-const handleFile = async (e) => {
+    const handleFile = async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
       setError(null); setPreview(null); setImporting(true);
@@ -568,39 +580,28 @@ const handleFile = async (e) => {
         const workbook = XLSX.read(data);
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const json = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-
         if (json.length === 0) { setError('The spreadsheet appears to be empty'); setImporting(false); return; }
-
         const mapped = [];
-
         for (const row of json) {
           const values = Object.values(row);
-
-          // Column A = month, Column B = day, Column C = first name, Column D = last name
           const monthRaw = values[0];
           const dayRaw = values[1];
           const firstName = String(values[2] || '').trim();
           const lastName = String(values[3] || '').trim();
-
           const fullName = `${firstName} ${lastName}`.trim();
-
-          // Skip empty rows or header rows
           if (!fullName || fullName.toLowerCase().includes('name') || fullName.toLowerCase().includes('month')) continue;
-
           const month = parseInt(monthRaw);
           const day = parseInt(dayRaw);
-
           if (!month || !day || isNaN(month) || isNaN(day)) continue;
-
           const dateFormatted = String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
           mapped.push({ name: fullName, date: dateFormatted });
         }
-
         if (mapped.length === 0) { setError('Could not parse any birthday data. Make sure you have Month, Day, First Name, Last Name columns.'); setImporting(false); return; }
         setPreview(mapped);
       } catch (err) { console.error('File parse error:', err); setError("Failed to read file. Please make sure it's a valid Excel file (.xlsx)"); }
       setImporting(false);
     };
+
     const confirmImport = async () => {
       if (!preview) return;
       setSaving(true); setError(null);
@@ -648,7 +649,9 @@ const handleFile = async (e) => {
         {success && <div className="py-8 text-center"><CheckCircle size={48} className="mx-auto text-emerald-400 mb-3"/><p className="text-lg font-semibold text-emerald-400">Import Successful!</p><p className={`text-sm ${c('text-gray-400', 'text-gray-500')}`}>{preview?.length} birthdays added</p></div>}
       </div>
     </Modal>;
-  };const Dashboard = () => (
+  };
+
+  const Dashboard = () => (
     <div className="space-y-6">
       <div className="flex flex-wrap justify-between items-start gap-4">
         <div><h1 className="text-3xl font-bold bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">Dashboard</h1><p className={c('text-gray-400', 'text-gray-500')}>{MONTHS[selectedMonth]} {selectedYear} Overview</p></div>
@@ -690,7 +693,7 @@ const handleFile = async (e) => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat icon={Calendar} label="Events" value={completed.length} sub={`${upcoming.length} upcoming`} gradient="from-violet-500 to-purple-600"/>
         <Stat icon={Users} label="Attendees" value={attendees} sub={`${costPerPerson} RON avg`} gradient="from-cyan-500 to-blue-600"/>
-<Stat icon={Gift} label="Birthdays" value={`${birthdays.filter(b => { const parts = b.date?.split('-'); if (!parts) return false; const m = parseInt(parts[0]); if (m !== selectedMonth + 1) return false; const d = parseInt(parts[1]); const today = new Date(); if (selectedMonth < today.getMonth()) return true; if (selectedMonth === today.getMonth() && d <= today.getDate()) return true; return false; }).length}/${birthdays.filter(b => { const parts = b.date?.split('-'); return parts && parseInt(parts[0]) === selectedMonth + 1; }).length}`} sub={`celebrated in ${MONTHS[selectedMonth].slice(0,3)}`} gradient="from-pink-500 to-rose-600"/>
+        <Stat icon={Gift} label="Birthdays" value={`${birthdays.filter(b => { const parts = b.date?.split('-'); if (!parts) return false; const m = parseInt(parts[0]); if (m !== selectedMonth + 1) return false; const d = parseInt(parts[1]); const today = new Date(); if (selectedMonth < today.getMonth()) return true; if (selectedMonth === today.getMonth() && d <= today.getDate()) return true; return false; }).length}/${birthdays.filter(b => { const parts = b.date?.split('-'); return parts && parseInt(parts[0]) === selectedMonth + 1; }).length}`} sub={`celebrated in ${MONTHS[selectedMonth].slice(0,3)}`} gradient="from-pink-500 to-rose-600"/>
         <Stat icon={Coffee} label="TGIT" value={events.filter(e => e.type === 'TGIT').length} sub="happy hours" gradient="from-amber-500 to-orange-600"/>
       </div>
 
@@ -836,11 +839,12 @@ const handleFile = async (e) => {
     </div>
   );
 
-const [teamMembers, setTeamMembers] = useState([
+  const [teamMembers, setTeamMembers] = useState([
     { id: 1, name: 'Bogdan Seretean', email: 'bogdan.seretean@alchemy.com', role: 'Admin', initials: 'BS' }
   ]);
   const [editingTeam, setEditingTeam] = useState(null);
-  const [showTeamModal, setShowTeamModal] = useState(false);// Profile state
+  const [showTeamModal, setShowTeamModal] = useState(false);
+
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
@@ -850,7 +854,6 @@ const [teamMembers, setTeamMembers] = useState([
       try {
         const { data, error } = await supabase.from('ops_profiles').select('*').eq('id', session.user.id).single();
         if (error && error.code === 'PGRST116') {
-          // Profile doesn't exist yet, create it
           const { data: newProfile } = await supabase.from('ops_profiles').insert({
             id: session.user.id,
             name: session.user.user_metadata?.full_name || session.user.email,
@@ -902,7 +905,7 @@ const [teamMembers, setTeamMembers] = useState([
     const sizes = { sm: 'w-7 h-7 text-sm', md: 'w-12 h-12 text-xl', lg: 'w-16 h-16 text-3xl' };
     if (avatar) {
       return (
-        <div className={`${sizes[size]} rounded-2xl bg-gradient-to-br ${avatar.bg} flex items-center justify-center shadow-lg animate-pulse-slow`}>
+        <div className={`${sizes[size]} rounded-2xl bg-gradient-to-br ${avatar.bg} flex items-center justify-center shadow-lg`}>
           <span className={size === 'sm' ? 'text-xs' : size === 'lg' ? 'text-2xl' : 'text-lg'}>{avatar.emoji}</span>
         </div>
       );
@@ -912,7 +915,9 @@ const [teamMembers, setTeamMembers] = useState([
         {name?.charAt(0) || '?'}
       </div>
     );
-  };const Profile = () => {
+  };
+
+  const Profile = () => {
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [prefs, setPrefs] = useState({
@@ -947,8 +952,6 @@ const [teamMembers, setTeamMembers] = useState([
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">My Profile</h1>
-
-{/* Profile Card */}
         <div className={`p-6 rounded-2xl border ${c('border-gray-700/50 bg-gray-800/50', 'border-gray-200 bg-white')}`}>
           <div className="flex items-center gap-5">
             <AvatarDisplay avatarId={profile?.avatar_url} name={profile?.name} size="lg" />
@@ -967,7 +970,6 @@ const [teamMembers, setTeamMembers] = useState([
           </div>
         </div>
 
-        {/* Avatar Picker */}
         <div className={`p-6 rounded-2xl border ${c('border-gray-700/50 bg-gray-800/50', 'border-gray-200 bg-white')}`}>
           <div className="flex items-center gap-3 mb-4">
             <Sparkles size={18} className="text-violet-400" />
@@ -979,7 +981,7 @@ const [teamMembers, setTeamMembers] = useState([
                 key={a.id}
                 onClick={() => updateProfile({ avatar_url: a.id })}
                 className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${a.bg} flex items-center justify-center text-lg transition-all hover:scale-110 ${
-                  profile?.avatar_url === a.id ? 'ring-3 ring-white ring-offset-2 ring-offset-gray-900 scale-110' : 'opacity-70 hover:opacity-100'
+                  profile?.avatar_url === a.id ? 'ring-2 ring-white ring-offset-2 ring-offset-gray-900 scale-110' : 'opacity-70 hover:opacity-100'
                 }`}
               >
                 {a.emoji}
@@ -988,7 +990,6 @@ const [teamMembers, setTeamMembers] = useState([
           </div>
         </div>
 
-        {/* Notification Preferences */}
         <div className={`p-6 rounded-2xl border ${c('border-gray-700/50 bg-gray-800/50', 'border-gray-200 bg-white')}`}>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600">
@@ -999,68 +1000,31 @@ const [teamMembers, setTeamMembers] = useState([
               <p className={`text-sm ${c('text-gray-400', 'text-gray-500')}`}>Choose what you want to be notified about</p>
             </div>
           </div>
-
           <div className="space-y-3">
-            <Toggle
-              label="All Changes"
-              desc="Get notified when events, expenses, or inventory are added or modified"
-              checked={prefs.notify_changes}
-              onChange={v => setPrefs({ ...prefs, notify_changes: v })}
-            />
-
-            <Toggle
-              label="Upcoming Birthdays"
-              desc="Reminder before team member birthdays"
-              checked={prefs.notify_birthdays}
-              onChange={v => setPrefs({ ...prefs, notify_birthdays: v })}
-            />
+            <Toggle label="All Changes" desc="Get notified when events, expenses, or inventory are added or modified" checked={prefs.notify_changes} onChange={v => setPrefs({ ...prefs, notify_changes: v })}/>
+            <Toggle label="Upcoming Birthdays" desc="Reminder before team member birthdays" checked={prefs.notify_birthdays} onChange={v => setPrefs({ ...prefs, notify_birthdays: v })}/>
             {prefs.notify_birthdays && (
               <div className={`ml-4 p-4 rounded-xl border-l-4 border-pink-500 ${c('bg-pink-500/5', 'bg-pink-50')}`}>
                 <label className="text-sm font-medium">Notify me this many days before:</label>
                 <div className="flex items-center gap-3 mt-2">
-                  <input
-                    type="range" min="1" max="14" value={prefs.notify_birthdays_days}
-                    onChange={e => setPrefs({ ...prefs, notify_birthdays_days: parseInt(e.target.value) })}
-                    className="flex-1 accent-pink-500"
-                  />
+                  <input type="range" min="1" max="14" value={prefs.notify_birthdays_days} onChange={e => setPrefs({ ...prefs, notify_birthdays_days: parseInt(e.target.value) })} className="flex-1 accent-pink-500"/>
                   <span className="text-lg font-bold text-pink-400 w-12 text-center">{prefs.notify_birthdays_days}d</span>
                 </div>
               </div>
             )}
-
-            <Toggle
-              label="Low Stock Alerts"
-              desc="Get notified when inventory items fall below minimum"
-              checked={prefs.notify_low_stock}
-              onChange={v => setPrefs({ ...prefs, notify_low_stock: v })}
-            />
-
-            <Toggle
-              label="Budget Warnings"
-              desc="Get notified when monthly spending exceeds threshold"
-              checked={prefs.notify_budget}
-              onChange={v => setPrefs({ ...prefs, notify_budget: v })}
-            />
+            <Toggle label="Low Stock Alerts" desc="Get notified when inventory items fall below minimum" checked={prefs.notify_low_stock} onChange={v => setPrefs({ ...prefs, notify_low_stock: v })}/>
+            <Toggle label="Budget Warnings" desc="Get notified when monthly spending exceeds threshold" checked={prefs.notify_budget} onChange={v => setPrefs({ ...prefs, notify_budget: v })}/>
             {prefs.notify_budget && (
               <div className={`ml-4 p-4 rounded-xl border-l-4 border-amber-500 ${c('bg-amber-500/5', 'bg-amber-50')}`}>
                 <label className="text-sm font-medium">Alert when budget reaches:</label>
                 <div className="flex items-center gap-3 mt-2">
-                  <input
-                    type="range" min="50" max="100" step="5" value={prefs.notify_budget_threshold}
-                    onChange={e => setPrefs({ ...prefs, notify_budget_threshold: parseInt(e.target.value) })}
-                    className="flex-1 accent-amber-500"
-                  />
+                  <input type="range" min="50" max="100" step="5" value={prefs.notify_budget_threshold} onChange={e => setPrefs({ ...prefs, notify_budget_threshold: parseInt(e.target.value) })} className="flex-1 accent-amber-500"/>
                   <span className="text-lg font-bold text-amber-400 w-16 text-center">{prefs.notify_budget_threshold}%</span>
                 </div>
               </div>
             )}
           </div>
-
-          <button
-            onClick={savePrefs}
-            disabled={saving}
-            className="w-full mt-6 py-3.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg shadow-violet-500/25 disabled:opacity-50 flex items-center justify-center gap-2"
-          >
+          <button onClick={savePrefs} disabled={saving} className="w-full mt-6 py-3.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg shadow-violet-500/25 disabled:opacity-50 flex items-center justify-center gap-2">
             {saving ? <Loader2 size={18} className="animate-spin" /> : saved ? <Check size={18} /> : null}
             {saving ? 'Saving...' : saved ? 'Saved!' : 'Save Preferences'}
           </button>
@@ -1104,18 +1068,8 @@ const [teamMembers, setTeamMembers] = useState([
   };
 
   const Team = () => {
-    const roleColors = {
-      Admin: 'bg-violet-500/20 text-violet-400',
-      Editor: 'bg-cyan-500/20 text-cyan-400',
-      Viewer: 'bg-emerald-500/20 text-emerald-400'
-    };
-    const gradients = [
-      'from-violet-500 to-purple-600',
-      'from-cyan-500 to-blue-600',
-      'from-pink-500 to-rose-600',
-      'from-amber-500 to-orange-600',
-      'from-emerald-500 to-teal-600',
-    ];
+    const roleColors = { Admin: 'bg-violet-500/20 text-violet-400', Editor: 'bg-cyan-500/20 text-cyan-400', Viewer: 'bg-emerald-500/20 text-emerald-400' };
+    const gradients = ['from-violet-500 to-purple-600', 'from-cyan-500 to-blue-600', 'from-pink-500 to-rose-600', 'from-amber-500 to-orange-600', 'from-emerald-500 to-teal-600'];
     return (
       <div className="space-y-6">
         <div className="flex flex-wrap justify-between items-center gap-4">
@@ -1182,11 +1136,14 @@ const [teamMembers, setTeamMembers] = useState([
             <Nav icon={Star} label="Vendors" t="vendors"/>
             <Nav icon={Cake} label="Birthdays" t="birthdays"/>
             <Nav icon={FileText} label="Reports" t="reports"/>
-            <Nav icon={UserCog} label="Team" t="team"/><Nav icon={Users} label="My Profile" t="profile"/>
+            <Nav icon={UserCog} label="Team" t="team"/>
+            <Nav icon={Users} label="My Profile" t="profile"/>
           </nav>
           <button onClick={() => setTab('profile')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all mb-1 ${c('text-gray-400 hover:bg-white/5', 'text-gray-600 hover:bg-gray-100')}`}>
-<AvatarDisplay avatarId={profile?.avatar_url} name={profile?.name} size="sm" />  <span className="text-sm truncate">{profile?.name || 'Profile'}</span>
-</button><button onClick={() => setDark(!dark)} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${c('text-gray-400 hover:bg-white/5', 'text-gray-600 hover:bg-gray-100')}`}>{dark ? <Sun size={20}/> : <Moon size={20}/>}{dark ? 'Light' : 'Dark'} Mode</button>
+            <AvatarDisplay avatarId={profile?.avatar_url} name={profile?.name} size="sm" />
+            <span className="text-sm truncate">{profile?.name || 'Profile'}</span>
+          </button>
+          <button onClick={() => setDark(!dark)} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${c('text-gray-400 hover:bg-white/5', 'text-gray-600 hover:bg-gray-100')}`}>{dark ? <Sun size={20}/> : <Moon size={20}/>}{dark ? 'Light' : 'Dark'} Mode</button>
           <div className={`flex items-center gap-2 px-4 py-2 mt-2 rounded-xl text-xs ${syncError ? 'text-red-400' : 'text-emerald-400'}`}>
             {syncError ? <CloudOff size={14}/> : <Cloud size={14}/>}
             {syncError || 'Synced'}
@@ -1201,7 +1158,8 @@ const [teamMembers, setTeamMembers] = useState([
           {tab === 'vendors' && <Vendors/>}
           {tab === 'birthdays' && <Birthdays/>}
           {tab === 'reports' && <Reports/>}
-          {tab === 'team' && <Team/>}{tab === 'profile' && <Profile/>}
+          {tab === 'team' && <Team/>}
+          {tab === 'profile' && <Profile/>}
         </div>
       </div>
       )}
@@ -1212,7 +1170,7 @@ const [teamMembers, setTeamMembers] = useState([
       {modal === 'vendor' && <VendorModal/>}
       {modal === 'inventory' && <InventoryModal/>}
       {modal === 'birthday' && <BirthdayModal/>}
-{modal === 'importBirthdays' && <ImportBirthdaysModal/>}
+      {modal === 'importBirthdays' && <ImportBirthdaysModal/>}
       {deleteConfirm && <DeleteModal/>}
       {showTeamModal && <TeamMemberModal/>}
       {showPrintReport && (
